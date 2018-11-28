@@ -8,10 +8,45 @@
 library(tidyverse)
 theme_set(theme_bw(base_size = 10))
 
-abs.24 = readRDS('abs.24.rds')
 abs.2 = readRDS('abs.2.rds')
+abs.24 = readRDS('abs.24.rds')
 
-#### up to here
+abs.2 = select(abs.2, -abs226)
+
+# number of infants who attended follow ups
+abs.2 = abs.2[!is.na(abs.2$rs),]
+abs.24 = abs.24[!is.na(abs.24$rs),]
+
+number_infants = as.data.frame(unique(abs.2$sub.id)) # 220 infants attended follow ups
+
+# Table 1: missing data
+tymp_results = summary(abs.2$tymp)
+dpoae_results = summary(abs.2$dpoae)
+abs_missing = sum(is.na(abs.2$abs250)) # 63 missing
+
+# dataset with NA (CNT) of rs and abs removed
+# first set rs = cnt to NA 
+abs.2$rs[abs.2$rs == 'CNT'] = NA
+abs.24$rs[abs.24$rs == 'CNT'] = NA
+abs.2$rs = droplevels(abs.2$rs)
+abs.24$rs = droplevels(abs.24$rs)
+
+abs.2 = abs.2[!is.na(abs.2$rs) & !is.na(abs.2$abs250),]
+abs.24 = abs.24[!is.na(abs.24$rs) & !is.na(abs.24$abs226),] # final dataset had 358 observations
+
+# Table 2: characteristics
+age.wks = summary(abs.2$age.wks)
+sex = summary(abs.2$gender)
+eth = summary(abs.2$ethnicity)
+rs = summary(abs.2$rs)
+
+# do any demographics have missing data?
+sum(is.na(abs.2$ear))
+sum(is.na(abs.2$gender))
+sum(is.na(abs.2$ethnicity)) # none - no need to impute
+
+# reference standard plots
+
 
 
 # missing data----
