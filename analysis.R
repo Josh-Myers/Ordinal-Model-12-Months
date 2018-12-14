@@ -17,6 +17,9 @@ abs.2 = readRDS('abs.2.rds')
 abs.24 = readRDS('abs.24.rds')
 abs.2 = select(abs.2, -abs226)
 
+# total number recruited
+total_n = distinct(abs.2, sub.id, .keep_all = TRUE)
+
 # number of infants who attended follow ups
 abs.2 = filter(abs.2, !is.na(rs))
 abs.24 = filter(abs.24, !is.na(rs))
@@ -47,14 +50,12 @@ eth = summary(number_infants_study_sample$ethnicity)
 rs = summary(abs.2$rs)
 rs.by.ear = tapply(abs.2$rs, abs.2$ear, summary)
 
-
 # do any demographics have missing data?
 sum(is.na(abs.2$ear))
 sum(is.na(abs.2$gender))
 sum(is.na(abs.2$ethnicity)) # none - no need to impute
 
 # reference standard plots
-
 # 1 mean rs plots normal/Mild/Severe ----
 summary(abs.24$rs)
 rs.plot.df = abs.24
@@ -156,8 +157,7 @@ print(abs.rs.all.plot)
 abs.plots <- plot_grid(abs.rs.plot, abs.rs.all.plot, nrow=2, ncol=1, align = "v", labels = c("A", "B"))
 ggsave("fig.1.abs.plots.jpeg", abs.plots, height=6, width=8, dpi=500)
 
-# Create the 90% normal range for the example plots
-
+# Create the 90% normal range (1/24 octave) for the example plots
 norm.24 = abs.24
 norm.24 = select(norm.24, rs, starts_with('abs'))
 norm.24 <- group_by(norm.24, rs)
@@ -188,6 +188,7 @@ abs.90.long$rs = as.character(abs.90.long$rs)
 # filter normal
 abs.90.long = filter(abs.90.long, rs == 'Pass')
 
+# plot to check it looks right
 abs.90.plot <- ggplot(abs.90.long, aes(x=Frequency, y=median, ymin=five, ymax=ninety5)) +
   geom_ribbon(linetype=0, alpha = 0.4) +
   scale_fill_grey(start=0.6, end=0.2) +
@@ -202,6 +203,44 @@ abs.90.plot <- ggplot(abs.90.long, aes(x=Frequency, y=median, ymin=five, ymax=ni
   theme(plot.margin=unit(c(0.5, 0.8, 0.1, 0.5),"lines")) 
 #theme(legend.position="none")
 print(abs.90.plot)
+
+# need the 90% range for 1/2 octave for the app
+norm.2 = abs.2
+norm.2 = select(norm.2, rs, starts_with('abs'))
+norm.2 <- group_by(norm.2, rs) 
+abs.median.2 <- summarise_all(norm.2, funs(median))
+abs.05.2 <- summarise_all(norm.2, funs(quantile(., probs = (0.05))))
+abs.95.2 <- summarise_all(norm.2, funs(quantile(., probs = (0.95))))
+abs.90.2 <- rbind(abs.median.2, abs.05.2, abs.95.2)
+abs.90.2 <- data.frame(abs.90.2)
+colnames(abs.90.2) <- c("rs", "250", "354", "500", "707", "1000", "1414", "2000", "2828", "4000", "5657", "8000.00")
+
+abs.90.2 <- cbind.data.frame(abs.90.2, stats.col)
+abs.90.long.2 <- gather(abs.90.2, Frequency, absorbance, 2:12)
+abs.90.long.2 <- spread(abs.90.long.2, stats.col, absorbance)
+abs.90.long.2$Frequency <- as.numeric(abs.90.long.2$Frequency)
+abs.90.long.2$rs = as.character(abs.90.long.2$rs)
+
+# filter normal
+abs.90.long.2 = filter(abs.90.long.2, rs == 'Pass')
+
+# plot to check it looks right
+abs.90.plot.2 <- ggplot(abs.90.long.2, aes(x=Frequency, y=median, ymin=five, ymax=ninety5)) +
+  geom_ribbon(linetype=0, alpha = 0.4) +
+  scale_fill_grey(start=0.6, end=0.2) +
+  geom_line(size=0.8)  +
+  xlab("Frequency, Hz") +
+  ylab("Absorbance") +
+  scale_x_log10(expand=c(0, 0), breaks=c(226, 500, 1000, 2000, 4000, 8000))  +
+  scale_y_continuous(expand=c(0, 0), breaks=c(0, 0.2, 0.4, 0.6, 0.8, 1), limits=c(0, 1)) +
+  theme(legend.title=element_blank(), legend.text=element_text(size=10), legend.justification=c(0,1), 
+        legend.position=c(0.03, 0.97)) +
+  theme(axis.title.y = element_text(vjust = 0.6)) +
+  theme(plot.margin=unit(c(0.5, 0.8, 0.1, 0.5),"lines")) 
+print(abs.90.plot.2)
+
+# save 90% range for the app
+#saveRDS(abs.90.long.2, "twelveMth90range.rds")
 
 # modeling
 summary(abs.2$rs)
@@ -251,10 +290,10 @@ aic.mv = AIC(r)
 vif(r)
 resid(r, "gof")
 anova(r)
-
+plot(anova(r))
 options(prType = 'plain') # change to "latex" if want latex output
 latex(r, file = "") # replace "abs" with: \textit{A}  and paste into Rsweave file then compile pdf
-
+saveRDS(r, 'twelveMthModel.rds')
 r.pred <- predict(r, type = "fitted")
 # need predict lp (not fitted) for the multiclass roc
 # BUT don't use proc to calculate auc - it uses different method than rms - use MRME package if needed
@@ -307,7 +346,7 @@ quantile(predict(r, type='fitted'), c(100/n, 1-100/n), na.rm=TRUE)
 plot(Predict(r, fun = plogis,  kint = 1))
 plot(Predict(r, fun = plogis, kint = 2))
 
-val <- validate(r, B=200)
+val <- validate(r, B=500)
 full <- val[[1]]
 train <- val[[12]]
 test <- val[[23]]
@@ -357,25 +396,35 @@ cont.tab = table(pred.compare$cluster, pred.compare$`abs.2$rs`) # columns are th
 # explore any that the model said was normal, but RS said Severe
 
 # what is the median and range of predictions?
-pred.compare %>% 
+detach(package:plyr)
+mean = pred.compare %>% 
   group_by(cluster) %>% 
   summarise(mean = mean(value)) 
+mean
 
-pred.compare %>% 
+min = pred.compare %>% 
   group_by(cluster) %>% 
   summarise(min = min(value)) 
+min
 
-pred.compare %>% 
+max = pred.compare %>% 
   group_by(cluster) %>% 
   summarise(max = max(value)) 
+max
 
 # example
-eg = filter(abs.2, sub.id==534, ear=="L") 
-eg.prob = predict(r, eg, type = "fitted.ind")
-eg.prob
-eg.prob = "Probability of mild dysfunction = 0.47"
-eg.abs = filter(abs.24, sub.id==534, ear=="L") 
-eg.abs = dplyr::select(eg.abs, abs226:abs8000)
+eg1 = filter(abs.2, sub.id==534, ear=="L") 
+eg.prob.ind1 = round(predict(r, eg1, type = "fitted.ind"), 2)
+eg.prob.ind1
+eg.prob.fit1 = round(predict(r, eg1, type = "fitted"), 2)
+eg.prob.fit1
+prob.ind.norm1 = eg.prob.ind1[1]
+prob.ind.mild1 = eg.prob.ind1[2]
+prob.ind.sev1 = eg.prob.ind1[3]
+prob.fit.mild1 = eg.prob.fit1[1]
+prob.fit.sev1 = eg.prob.fit1[2]
+eg.abs1 = filter(abs.24, sub.id==534, ear=="L") 
+eg.abs1 = dplyr::select(eg.abs1, abs226:abs8000)
 freq.num = c(226.00, 257.33, 280.62, 297.30, 324.21, 343.49, 363.91, 385.55, 408.48, 432.77, 458.50,
                   471.94, 500.00, 514.65, 545.25, 561.23, 577.68, 594.60, 629.96, 648.42, 667.42, 686.98,
                   707.11, 727.83, 749.15, 771.11, 793.70, 816.96, 840.90, 865.54, 890.90, 917.00, 943.87,
@@ -387,13 +436,13 @@ freq.num = c(226.00, 257.33, 280.62, 297.30, 324.21, 343.49, 363.91, 385.55, 408
                   4000.00, 4117.21, 4237.85, 4362.03, 4489.85, 4621.41, 4756.83, 4896.21, 5039.68, 5187.36,
                   5339.36, 5495.81, 5656.85, 5822.61, 5993.23, 6168.84, 6349.60, 6535.66, 6727.17, 6924.29,
                   7127.19, 7336.03, 7550.99, 7772.26, 8000.00)
-names(eg.abs) = freq.num
-eg.abs.long <- gather(eg.abs, Frequency, Absorbance, 1:107)
-eg.abs.long$Frequency = as.numeric(eg.abs.long$Frequency)
+names(eg.abs1) = freq.num
+eg.abs.long1 <- gather(eg.abs1, Frequency, Absorbance, 1:107)
+eg.abs.long1$Frequency = as.numeric(eg.abs.long1$Frequency)
 
-eg.plot.1 = ggplot(eg.abs.long) +
+eg.plot.1 = ggplot(eg.abs.long1) +
   scale_x_log10(expand=c(0, 0), breaks=c(226, 500, 1000, 2000, 4000, 8000))  +
-  geom_line(aes(x= Frequency, y=Absorbance), data = eg.abs.long, colour="blue") +
+  geom_line(aes(x= Frequency, y=Absorbance), data = eg.abs.long1, colour="blue") +
   geom_ribbon(data=abs.90.long, aes(x = Frequency, ymin = five, ymax = ninety5, linetype=NA), alpha = 0.2, show.legend = F) +
   xlab("Frequency, Hz") +
   ylab("Absorbance") +
@@ -404,22 +453,27 @@ eg.plot.1 = ggplot(eg.abs.long) +
   theme(plot.title = element_text(hjust = 0.5)) +
   theme(plot.title = element_text(lineheight=.8, face="bold")) +
   theme(plot.title = element_text(vjust=2)) +
-  annotate("text", x = 250, y = c(0.92, 0.85), label = c("S534, left", "Prob Mild = 0.47"), hjust = 0) 
+  annotate("text", x = 250, y = c(0.95), label = ("Left ear of a 55-week-old male"), hjust = 0) +
+  annotate("text", x = 250, y = c(0.65), label = ("'ME' >= ~'mild'~ 0.73"), parse=TRUE, hjust=0) +
+  annotate("text", x = 250, y = c(0.60), label = ("'ME' >= ~'severe'~ 0.26"), parse=TRUE, hjust=0) +
+  annotate("text", x = 250, y = c(0.85), label = paste("Normal = ",  prob.ind.norm1), parse=F, hjust=0) +
+  annotate("text", x = 250, y = c(0.80), label = paste("Mild = ",  prob.ind.mild1), parse=F, hjust=0) +
+  annotate("text", x = 250, y = c(0.75), label = paste("Severe = ",  prob.ind.sev1), parse=F, hjust=0) 
 eg.plot.1
 
-eg = filter(abs.2, sub.id==416, ear=="R") 
-eg.prob = predict(r, eg, type = "fitted.ind")
-eg.prob
-eg.prob = "Probability of severe dysfunction = 0.88"
-eg.abs = filter(abs.24, sub.id==416, ear=="R") 
-eg.abs = dplyr::select(eg.abs, abs226:abs8000)
-names(eg.abs) = freq.num
-eg.abs.long <- gather(eg.abs, Frequency, Absorbance, 1:107)
-eg.abs.long$Frequency = as.numeric(eg.abs.long$Frequency)
+eg2 = filter(abs.2, sub.id==416, ear=="R") 
+eg.prob.ind2 = round(predict(r, eg2, type = "fitted.ind"), 2)
+eg.prob.ind2
+prob.ind.sev2 = eg.prob.ind2[3]
+eg.abs2 = filter(abs.24, sub.id==416, ear=="R") 
+eg.abs2 = dplyr::select(eg.abs2, abs226:abs8000)
+names(eg.abs2) = freq.num
+eg.abs.long2 <- gather(eg.abs2, Frequency, Absorbance, 1:107)
+eg.abs.long2$Frequency = as.numeric(eg.abs.long2$Frequency)
 
-eg.plot.2 = ggplot(eg.abs.long) +
+eg.plot.2 = ggplot(eg.abs.long2) +
   scale_x_log10(expand=c(0, 0), breaks=c(226, 500, 1000, 2000, 4000, 8000))  +
-  geom_line(aes(x= Frequency, y=Absorbance), data = eg.abs.long, colour="red") +
+  geom_line(aes(x= Frequency, y=Absorbance), data = eg.abs.long2, colour="red") +
   geom_ribbon(data=abs.90.long, aes(x = Frequency, ymin = five, ymax = ninety5, linetype=NA), alpha = 0.2, show.legend = F) +
   xlab("Frequency, Hz") +
   ylab("Absorbance") +
@@ -430,7 +484,9 @@ eg.plot.2 = ggplot(eg.abs.long) +
   theme(plot.title = element_text(hjust = 0.5)) +
   theme(plot.title = element_text(lineheight=.8, face="bold")) +
   theme(plot.title = element_text(vjust=2)) +
-  annotate("text", x = 250, y = c(0.92, 0.85), label = c("S416, right", "Prob Severe = 0.89"), hjust = 0) 
+  annotate("text", x = 250, y = c(0.95), label = ("Right ear of a 53-week-old male"), hjust = 0) +
+  annotate("text", x = 250, y = c(0.85), label = paste("Severe = ",  prob.ind.sev2), parse=F, hjust=0) 
+
 eg.plot.2
 
 eg.plots <- plot_grid(eg.plot.1, eg.plot.2, nrow=2, ncol=1, align = "v", labels = c("A", "B"))
@@ -439,7 +495,7 @@ ggsave("fig.4.eg.plots.jpeg", eg.plots, height=6, width=6, dpi=500)
 # Demographics model
 f.dem <- lrm(rs ~ ear + gender + ethnicity + abs1000 + abs1414 + abs2000 + abs2828 + abs4000 + abs5657, data = abs.2, x = T, y = T)
 r.dem = robcov(f.dem, abs.2$sub.id) 
-r.dem                               
+r.dem                  
 gamma.dem = (302.03 - 9) / 302.03
 aic.dem = AIC(r.dem) # model without dems has lower AIC so use that one
 
