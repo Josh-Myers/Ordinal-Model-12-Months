@@ -412,6 +412,20 @@ max = pred.compare %>%
   summarise(max = max(value)) 
 max
 
+# predict class membership P >= j|X using 0.5 cutoff
+pred.fit = predict(r, type = "fitted")
+pred.fit = as.data.frame(round(pred.fit, digits =2))
+names(pred.fit) = c("mild", "severe")
+pred.fit$rs = abs.2$rs
+pred.fit$label = NA
+
+pred.fit$label = with(pred.fit, 
+                      ifelse(severe > 0.5, "Severe",
+                             ifelse(severe < 0.5 & mild < 0.5, "Normal", "Mild")))
+pred.fit$label = factor(pred.fit$label, levels = c('Normal', 'Mild', 'Severe'))
+
+cont.tab2 = table(pred.fit$label, pred.fit$rs) # columns are the original label (the truth), and rows are the max predictions
+
 # example
 eg1 = filter(abs.2, sub.id==534, ear=="L") 
 eg.prob.ind1 = round(predict(r, eg1, type = "fitted.ind"), 2)
@@ -453,12 +467,12 @@ eg.plot.1 = ggplot(eg.abs.long1) +
   theme(plot.title = element_text(hjust = 0.5)) +
   theme(plot.title = element_text(lineheight=.8, face="bold")) +
   theme(plot.title = element_text(vjust=2)) +
-  annotate("text", x = 250, y = c(0.95), label = ("Left ear of a 55-week-old male"), hjust = 0) +
-  annotate("text", x = 250, y = c(0.65), label = ("'ME' >= ~'mild'~ 0.73"), parse=TRUE, hjust=0) +
-  annotate("text", x = 250, y = c(0.60), label = ("'ME' >= ~'severe'~ 0.26"), parse=TRUE, hjust=0) +
-  annotate("text", x = 250, y = c(0.85), label = paste("Normal = ",  prob.ind.norm1), parse=F, hjust=0) +
-  annotate("text", x = 250, y = c(0.80), label = paste("Mild = ",  prob.ind.mild1), parse=F, hjust=0) +
-  annotate("text", x = 250, y = c(0.75), label = paste("Severe = ",  prob.ind.sev1), parse=F, hjust=0) 
+  annotate("text", x = 250, y = c(0.90), label = ("Left ear of a 55-week-old male"), hjust = 0) +
+  annotate("text", x = 250, y = c(0.80), label = ("'ME' >= ~'mild'~ 0.73"), parse=TRUE, hjust=0) +
+  annotate("text", x = 250, y = c(0.70), label = ("'ME' >= ~'severe'~ 0.26"), parse=TRUE, hjust=0) +
+  annotate("text", x = 250, y = c(0.60), label = paste("Normal = ",  prob.ind.norm1), parse=F, hjust=0) +
+  annotate("text", x = 250, y = c(0.50), label = paste("Mild = ",  prob.ind.mild1), parse=F, hjust=0) +
+  annotate("text", x = 250, y = c(0.40), label = paste("Severe = ",  prob.ind.sev1), parse=F, hjust=0) 
 eg.plot.1
 
 eg2 = filter(abs.2, sub.id==416, ear=="R") 
@@ -484,8 +498,8 @@ eg.plot.2 = ggplot(eg.abs.long2) +
   theme(plot.title = element_text(hjust = 0.5)) +
   theme(plot.title = element_text(lineheight=.8, face="bold")) +
   theme(plot.title = element_text(vjust=2)) +
-  annotate("text", x = 250, y = c(0.95), label = ("Right ear of a 53-week-old male"), hjust = 0) +
-  annotate("text", x = 250, y = c(0.85), label = paste("Severe = ",  prob.ind.sev2), parse=F, hjust=0) 
+  annotate("text", x = 250, y = c(0.90), label = ("Right ear of a 53-week-old male"), hjust = 0) +
+  annotate("text", x = 250, y = c(0.80), label = paste("Severe = ",  prob.ind.sev2), parse=F, hjust=0) 
 
 eg.plot.2
 
