@@ -1,0 +1,212 @@
+---
+output: 
+  html_document: 
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# An Ordinal Model for Diagnosing Middle Ear Disease 
+
+In this analysis I develop an ordinal prediction model for diagnosing middle ear infections in infants. Ordinal model means that there is an ordering of the outcome - in this case "normal", "mild", or "severe" infections.
+
+You can see the code that produced the output by clicking the 'code' buttons on the right of the page. This is a simplified analysis, the script containing the complete analysis is available [here](https://github.com/Josh-Myers/Ordinal-Model-12-Months/blob/master/analysis.R).
+
+## Research Question
+
+Absorbance is an innovative test for ear infections that uses a high-dimensional response to measure the function of the middle ear. An advantage of this technology is that it high resolution, capturing a lot of information, but the amount of information also makes interpreting results difficult for clinicians. My research goal was to develop an objective method for interpreting test results to help clinicians make a diagnosis that was easy to interpret and use.
+
+## Analysis
+### * *Data wrangling and exploration*
+
+I first wrangled the data and plotted average test results (absorbance) stratified by levels of the outcome (normal, mild, severe). The absorbance test measures middle ear function over a wide range of frequencies (226 to 8000 Hz). The figure below shows that there does appear to be an ordinal relationship in the data, with mild generally falling between normal and severe levels. 
+
+```{r, results='hide', fig.keep='all', message=FALSE, error=FALSE}
+library(MyersMisc)
+library(plyr)
+library(tidyr)
+library(tidyverse)
+library(rms)
+
+# load and wrangle data
+abs.2 = readRDS('abs.2.rds')
+abs.24 = readRDS('abs.24.rds')
+abs.2 = select(abs.2, -abs226)
+abs.2 = filter(abs.2, !is.na(rs))
+abs.24 = filter(abs.24, !is.na(rs))
+abs.2$rs[abs.2$rs == 'CNT'] = NA
+abs.24$rs[abs.24$rs == 'CNT'] = NA
+abs.2$rs = droplevels(abs.2$rs)
+abs.24$rs = droplevels(abs.24$rs)
+abs.2 = filter(abs.2, !is.na(rs) & !is.na(abs250)) 
+abs.24 = filter(abs.24, !is.na(rs) & !is.na(abs226)) 
+number_infants_study_sample = distinct(abs.2, sub.id, .keep_all = TRUE) 
+
+# Plot of normal/Mild/Severe 
+rs.plot.df = abs.24
+rs.plot.df$rs = factor(rs.plot.df$rs, levels = c('Pass', 'Mild', 'Severe'))
+rs.plot.df$rs <- revalue(rs.plot.df$rs, c("Pass" = "Normal", 
+                                "Mild" = "Mild",
+                                "Severe" = "Severe"))
+
+rs.plot.df <- select(rs.plot.df, rs, starts_with('abs'))
+colnames(rs.plot.df) <- c("rs", "226.00", "257.33", "280.62", "297.30", "324.21", "343.49", "363.91", "385.55", "408.48", "432.77", "458.50",
+                      "471.94", "500.00", "514.65", "545.25", "561.23", "577.68", "594.60", "629.96", "648.42", "667.42", "686.98",
+                      "707.11", "727.83", "749.15", "771.11", "793.70", "816.96", "840.90", "865.54", "890.90", "917.00", "943.87",
+                      "971.53", "1000.00", "1029.30", "1059.46", "1090.51", "1122.46", "1155.35", "1189.21", "1224.05", "1259.92", 
+                      "1296.84", "1334.84", "1373.95", "1414.21", "1455.65", "1498.31", "1542.21", "1587.40", "1633.92", "1681.79",
+                      "1731.07", "1781.80", "1834.01", "1887.75", "1943.06", "2000.00", "2058.60", "2118.93", "2181.02", "2244.92",
+                      "2310.71", "2378.41", "2448.11", "2519.84", "2593.68", "2669.68", "2747.91", "2828.43", "2911.31", "2996.61",
+                      "3084.42", "3174.80", "3267.83", "3363.59", "3462.15", "3563.59", "3668.02", "3775.50", "3886.13", 
+                      "4000.00", "4117.21", "4237.85", "4362.03", "4489.85", "4621.41", "4756.83", "4896.21", "5039.68", "5187.36",
+                      "5339.36", "5495.81", "5656.85", "5822.61", "5993.23", "6168.84", "6349.60", "6535.66", "6727.17", "6924.29",
+                      "7127.19", "7336.03", "7550.99", "7772.26", "8000.00")
+
+rs.plot.df <- group_by(rs.plot.df, rs)
+abs.mean <- summarise_all(rs.plot.df, funs(mean))
+abs.mean <- gather(abs.mean, Frequency, absorbance, 2:108)
+ggplot(abs.mean, aes(x=as.numeric(Frequency), y=absorbance, group=rs, colour=rs)) +
+  theme_bw() +
+  scale_colour_manual(values = c("Normal" = "#00BA38", "Mild" = "#619CFF", "Severe" = "#F8766D")) +
+  geom_line()  +
+  xlab("Frequency, Hz") +
+  ylab("Absorbance") +
+  scale_x_log10(expand=c(0, 0), breaks=c(226, 500, 1000, 2000, 4000, 8000))  +
+  scale_y_continuous(expand=c(0, 0), breaks=c(0, 0.2, 0.4, 0.6, 0.8, 1), limits=c(0, 1)) +
+  theme(legend.title=element_blank(), legend.text=element_text(size=10), legend.justification=c(0,1), 
+        legend.position=c(0,1)) +
+  theme(axis.title.y = element_text(vjust = 0.6)) +
+  theme(plot.margin=unit(c(0.5, 0.8, 0.1, 0.5),"lines")) + 
+  theme(legend.title=element_blank(), legend.justification=c(1,0), legend.position=c(0.15,0.75))
+```
+
+I created features from the data for modeling by averaging the results into 1/2 octave frequency resolution which reduced the number of variables from >100 to 11. I then chose features based on prior research, which has found an ordinal relationship from 1000 to 6000 Hz. We can see that this agrees with our results, as in the figure above there is an ordinal relationship (mild between normal and severe) over this frequency range. 
+
+The final candidate variables for the model were absorbance at 1000, 1414, 2000, 2828, 4000 and 5657 Hz. 
+
+### *Checking assumptions*
+
+I chose to use proportional odds logistic regression to model the variables. This model assumes that the same regression coefficients (the number that you multiply each variable by in the predictive algorithm) can be used to predict the outcome regardless of the level of the reference standard being predicted. I checked this assumption by plotting the raw data averages against the expected values under the assumption of proportional odds for each of the candidate variables. The solid lines and circles represent the raw data means, and the dashed lines the expected values if the assumption of proportional odds is met. The trend in the solid lines should be monotonic to satisfy the assumption of proportional odds. The figures below show that the stratified means were monotonic for all variables, and the expected values were very close to the simple means for all variables except for 2828 Hz. Overall, the assumption of proportional odds was satisfied for these variables. 
+
+```{r, out.width=c('50%', '50%'), fig.show='hold', results='hide', fig.keep='all', message=FALSE, error=FALSE}
+abs.2$rs = factor(abs.2$rs, levels = c('Pass', 'Mild', 'Severe'))
+MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs1000, cr=F, topcats=2, subn = F, data = abs.2, xlab = "", ylab = "1000 Hz")
+MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs1414, cr=F, topcats=2, subn = F, data = abs.2, xlab = "", ylab = "1414 Hz")
+MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs2000, cr=F, topcats=2, subn = F, data = abs.2, xlab = "", ylab = "2000 Hz")
+MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs2828, cr=F, topcats=2, subn = F, data = abs.2, xlab = "", ylab = "2828 Hz")
+MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs4000, cr=F, topcats=2, subn = F, data = abs.2, xlab = "", ylab = "4000 Hz")
+MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs5657, cr=F, topcats=2, subn = F, data = abs.2, xlab = "", ylab = "5657 Hz")
+
+```
+
+### *Fitting and interpreting the model*
+I then fitted the model, and plotted the amount of $\chi^2$ (chi-square, a type of statistic) that each variable contributed to the model. The figure below shows that the most important features were 1000, 2000 and 5657 Hz. 
+
+```{r, results='hide', fig.keep='all', message=FALSE, error=FALSE}
+raw.dd <- datadist(abs.2)
+options(datadist="raw.dd")
+f <- lrm(rs ~ abs1000 + abs1414 + abs2000 + abs2828 + abs4000 + abs5657, data = abs.2, x = T, y = T)
+r = robcov(f, abs.2$sub.id) 
+plot(anova(r), what="chisq", margin = "", newnames = c("1000 Hz", "1414 Hz", "2000 Hz", "2828 Hz", "4000 Hz","5657 Hz"), xlim = c(0, 14))
+
+```
+
+### *Evaluating model performance*
+I then evaluated the performance of the model and validated it with bootstrap resampling (a statistical process that samples the data with replacement). Model performance was evaluated with measures of calibaration and discrimination. Calibration assesses the quality of predictions, for example if the model predicts probability of 0.5, the subject should actually have the condition around 50% of the time. Calibration was assessed with calibration curves for each level of the outcome (mild and severe). The figures below show that the model is well calibrated for both mild (left) and severe (right) conditions, since the model calibration (solid lines) are very close to a model with ideal calibration (dashed lines). The dotted lines show calbration after being corrected for bias - these lines are very close to the solid lines, meaning that the model is not at significatn risk of overfitting (bias). 
+
+```{r, out.width=c('50%', '50%'), fig.show='hold', results='hide', fig.keep='all', message=FALSE, error=FALSE}
+r.pred <- predict(r, type = "fitted")
+validate(r, B = 500)
+cal1 = calibrate(r, B = 500, kint = 1) # calibrate for Y >= Mild
+plot(cal1, scat1d.opts=list(nhistSpike=0, side=1, frac=0.00, tck=0), xlim = c(0.3, 1), subtitles = F, xlab = "Predicted Probability", ylab = "Actual Probability")
+cal2 = calibrate(r, B = 500, kint = 2) # calibrate for Y >= Severe
+plot(cal2, scat1d.opts=list(nhistSpike=0, side=1, frac=0.00, tck=0), xlim = c(0.3, 1), subtitles = F, xlab = "Predicted Probability", ylab = "Actual Probability")
+
+val <- validate(r, B=500)
+full <- val[[1]]
+train <- val[[12]]
+test <- val[[23]]
+dxy.to.auc <- function(x) {
+  0.5*(x+1)
+  }
+auc.full <- dxy.to.auc(full)
+auc.train <- dxy.to.auc(train)
+auc.test <- dxy.to.auc(test)
+opt <- auc.train - auc.test
+opt.cor <- auc.full - opt
+auc.df <- c(auc.full, auc.train, auc.test, opt, opt.cor)
+auc.df.names <- c("full", "train", "test", "opt", "opt.cor")
+auc.res <- cbind.data.frame(auc.df.names, auc.df)
+auc = auc.res[5,]
+
+```
+
+Discrimination is how well the model distinguises between normal and abnormal cases. Discrimiation was assessed with the c-index. A c-index of 0.5 means the model is no better than chance, and a c-index of 1 is perfect. The c-index is the probability that for two subjects selected at random, one normal and one diseased, the model assigned higher probability of disease to the subject with the condition. The c-index of the model was `r full`, and `r auc` after being corrected for bias. A model with c-index of over 0.9 is considered very powerful. 
+
+## Applying the model 
+
+Below is a figure of applying the model to a subject. The graph plots the test result (red line) against the 90% normal range (shaded region), and provides the most likely diagnosis predicted by the model along with the probability (Prob) that the subject has that condtion. For this subject, the most likely diagnosis was "severe" dysfunction with probability of 0.89, meaning that it is very likely that this subject has severe middle ear disease. 
+
+```{r}
+# create 90% normal range
+norm.24 = abs.24
+norm.24 = select(norm.24, rs, starts_with('abs'))
+norm.24 <- group_by(norm.24, rs)
+abs.median <- summarise_all(norm.24, funs(median))
+abs.05 <- summarise_all(norm.24, funs(quantile(., probs = (0.05))))
+abs.95 <- summarise_all(norm.24, funs(quantile(., probs = (0.95))))
+abs.90 <- rbind(abs.median, abs.05, abs.95)
+abs.90 <- data.frame(abs.90)
+names1 = c("rs", "226.00", "257.33", "280.62", "297.30", "324.21", "343.49", "363.91", "385.55", "408.48", "432.77", "458.50",
+                       "471.94", "500.00", "514.65", "545.25", "561.23", "577.68", "594.60", "629.96", "648.42", "667.42", "686.98",
+                       "707.11", "727.83", "749.15", "771.11", "793.70", "816.96", "840.90", "865.54", "890.90", "917.00", "943.87",
+                       "971.53", "1000.00", "1029.30", "1059.46", "1090.51", "1122.46", "1155.35", "1189.21", "1224.05", "1259.92", 
+                       "1296.84", "1334.84", "1373.95", "1414.21", "1455.65", "1498.31", "1542.21", "1587.40", "1633.92", "1681.79",
+                       "1731.07", "1781.80", "1834.01", "1887.75", "1943.06", "2000.00", "2058.60", "2118.93", "2181.02", "2244.92",
+                       "2310.71", "2378.41", "2448.11", "2519.84", "2593.68", "2669.68", "2747.91", "2828.43", "2911.31", "2996.61",
+                       "3084.42", "3174.80", "3267.83", "3363.59", "3462.15", "3563.59", "3668.02", "3775.50", "3886.13", 
+                       "4000.00", "4117.21", "4237.85", "4362.03", "4489.85", "4621.41", "4756.83", "4896.21", "5039.68", "5187.36",
+                       "5339.36", "5495.81", "5656.85", "5822.61", "5993.23", "6168.84", "6349.60", "6535.66", "6727.17", "6924.29",
+                       "7127.19", "7336.03", "7550.99", "7772.26", "8000.00")
+
+colnames(abs.90) <- names1
+stats.col <- c("median", "median", "median", "five", "five", "five", "ninety5", "ninety5", "ninety5")
+abs.90 <- cbind.data.frame(abs.90, stats.col)
+abs.90.long <- gather(abs.90, Frequency, absorbance, 2:108)
+abs.90.long <- spread(abs.90.long, stats.col, absorbance)
+abs.90.long$Frequency <- as.numeric(abs.90.long$Frequency)
+abs.90.long$rs = as.character(abs.90.long$rs)
+abs.90.long = filter(abs.90.long, rs == 'Pass')
+freq.num = as.numeric(names1[-1])
+# example
+eg2 = filter(abs.2, sub.id==416, ear=="R") 
+eg.prob.ind2 = round(predict(r, eg2, type = "fitted.ind"), 2)
+diagnosis = c("Normal", "Mild", "Severe")[which.max(c(eg.prob.ind2))]
+probability = max(eg.prob.ind2)
+eg.abs2 = filter(abs.24, sub.id==416, ear=="R") 
+eg.abs2 = dplyr::select(eg.abs2, abs226:abs8000)
+names(eg.abs2) = freq.num
+eg.abs.long2 <- gather(eg.abs2, Frequency, Absorbance, 1:107)
+eg.abs.long2$Frequency = as.numeric(eg.abs.long2$Frequency)
+
+ggplot(eg.abs.long2) +
+  scale_x_log10(expand=c(0, 0), breaks=c(226, 500, 1000, 2000, 4000, 8000))  +
+  geom_line(aes(x= Frequency, y=Absorbance), data = eg.abs.long2, colour="red") +
+  geom_ribbon(data=abs.90.long, aes(x = Frequency, ymin = five, ymax = ninety5, linetype=NA), alpha = 0.2, show.legend = F) +
+  xlab("Frequency, Hz") +
+  ylab("Absorbance") +
+  scale_y_continuous(expand=c(0, 0), breaks=c(0, 0.2, 0.4, 0.6, 0.8, 1), limits=c(0, 1)) +
+  theme(legend.text=element_text(size=10), legend.justification=c(0,1)) +
+  theme(axis.title.y = element_text(vjust = 0.6)) +
+  theme(plot.margin=unit(c(0.5, 0.8, 0.1, 0.5),"lines")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(lineheight=.8, face="bold")) +
+  theme(plot.title = element_text(vjust=2)) +
+  annotate("text", x = 250, y = c(0.90), label = paste("Right ear diagnosis:", diagnosis, "(Prob = ", probability, ")"), hjust = 0) +
+  theme_bw()
+
+```
+
+I made the model available to clinicians by implementing it as a web application which is available [here](https://joshmyers.shinyapps.io/WAIPredictions/). To try out the model choose "10-16 months" from the "Select age" menu, and then click one of the "12 months" example files to download to your compluter (this is the test result that is saved by the clinican), and then upload the file with the "Browse" button to make a prediction based on the results saved in the file. 

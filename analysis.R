@@ -123,7 +123,6 @@ colnames(tymp.dp.plot.df) <- c("rs", "226.00", "257.33", "280.62", "297.30", "32
                     "5339.36", "5495.81", "5656.85", "5822.61", "5993.23", "6168.84", "6349.60", "6535.66", "6727.17", "6924.29",
                     "7127.19", "7336.03", "7550.99", "7772.26", "8000.00")
 
-
 # Group by rs and create mean
 tymp.dp.plot.df <- group_by(tymp.dp.plot.df, rs)
 abs.mean <- summarise_all(tymp.dp.plot.df, funs(mean))
@@ -203,6 +202,10 @@ abs.90.plot <- ggplot(abs.90.long, aes(x=Frequency, y=median, ymin=five, ymax=ni
   theme(plot.margin=unit(c(0.5, 0.8, 0.1, 0.5),"lines")) 
 #theme(legend.position="none")
 print(abs.90.plot)
+
+# save 90% range for the app
+#saveRDS(abs.90.long, "twelveMth90range.rds")
+
 
 # need the 90% range for 1/2 octave for the app
 norm.2 = abs.2
