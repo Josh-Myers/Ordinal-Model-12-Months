@@ -1,6 +1,4 @@
-# to do:
-# 1. change assumption of ordinality to: Normal not pass
-# 2. make all black and white (JAAA)
+# 12-months ordinal model
 
 #install_github('Josh-Myers/MyersMisc')
 library(MyersMisc)
