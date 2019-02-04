@@ -1,6 +1,6 @@
-# ordinal model - pass = pass both (type A and pass DP)
-#               - Mild = fail one test (fail DP and type A | type B or C tymp and pass DP)
-#               - Severe = fail both tests
+# to do:
+# 1. change assumption of ordinality to: Normal not pass
+# 2. make all black and white (JAAA)
 
 #install_github('Josh-Myers/MyersMisc')
 library(MyersMisc)
@@ -206,7 +206,6 @@ print(abs.90.plot)
 # save 90% range for the app
 #saveRDS(abs.90.long, "twelveMth90range.rds")
 
-
 # need the 90% range for 1/2 octave for the app
 norm.2 = abs.2
 norm.2 = select(norm.2, rs, starts_with('abs'))
@@ -251,17 +250,21 @@ abs.2$rs = factor(abs.2$rs, levels = c('Pass', 'Mild', 'Severe'))
 
 # check assumption of ordinality 
 # The solid lines are the simple stratified means, and the dashed lines are the expected values if the assumption of proportional odds is met. 
-ord.plot = plot.xmean.ordinaly(rs ~ abs1000 + abs1414 + abs2000 + abs2828 + abs4000 + abs5657, cr=F, topcats=2, subn = F, data = abs.2)
+abs.2.copy = abs.2
+abs.2.copy$rs = as.character(abs.2.copy$rs)
+abs.2.copy$rs[abs.2.copy$rs=='Pass'] = 'Normal'
+abs.2.copy$rs = factor(abs.2.copy$rs, levels = c('Normal', 'Mild', 'Severe'))
+ord.plot = plot.xmean.ordinaly(rs ~ abs1000 + abs1414 + abs2000 + abs2828 + abs4000 + abs5657, cr=F, topcats=2, subn = F, data = abs.2.copy)
 
 jpeg("fig.2.ord.plots.jpeg", width = 9, height = 6 , units = 'in', res = 500)
 par(mfrow=c(2,3))
 par(mar=c(5,4,2,2)+0.1)
-MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs1000, cr=F, topcats=2, subn = F, data = abs.2, xlab = "Reference Standard", ylab = "Absorbance 1000 Hz")
-MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs1414, cr=F, topcats=2, subn = F, data = abs.2, xlab = "Reference Standard", ylab = "Absorbance 1414 Hz")
-MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs2000, cr=F, topcats=2, subn = F, data = abs.2, xlab = "Reference Standard", ylab = "Absorbance 2000 Hz")
-MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs2828, cr=F, topcats=2, subn = F, data = abs.2, xlab = "Reference Standard", ylab = "Absorbance 2828 Hz")
-MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs4000, cr=F, topcats=2, subn = F, data = abs.2, xlab = "Reference Standard", ylab = "Absorbance 4000 Hz")
-MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs5657, cr=F, topcats=2, subn = F, data = abs.2, xlab = "Reference Standard", ylab = "Absorbance 5657 Hz")
+MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs1000, cr=F, topcats=2, subn = F, data = abs.2.copy, xlab = "Reference Standard", ylab = "Absorbance 1000 Hz")
+MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs1414, cr=F, topcats=2, subn = F, data = abs.2.copy, xlab = "Reference Standard", ylab = "Absorbance 1414 Hz")
+MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs2000, cr=F, topcats=2, subn = F, data = abs.2.copy, xlab = "Reference Standard", ylab = "Absorbance 2000 Hz")
+MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs2828, cr=F, topcats=2, subn = F, data = abs.2.copy, xlab = "Reference Standard", ylab = "Absorbance 2828 Hz")
+MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs4000, cr=F, topcats=2, subn = F, data = abs.2.copy, xlab = "Reference Standard", ylab = "Absorbance 4000 Hz")
+MyersMisc:::My.plot.xmean.ordinaly(rs ~ abs5657, cr=F, topcats=2, subn = F, data = abs.2.copy, xlab = "Reference Standard", ylab = "Absorbance 5657 Hz")
 dev.off()
 
 # set all other to "Asian"
@@ -304,7 +307,6 @@ r.pred <- predict(r, type = "fitted")
 # b.pca.roc <- multiclass.roc(wai.2.df$rs, b.pred.lp, levels = c("Pass", "Mild", "Severe"), 
 #                             print.auc=TRUE, plot=TRUE, print.thres = TRUE, col="purple", main="PCA fit")
 
-validate(r, B = 500)
 cal1 = calibrate(r, B = 500, kint = 1) # calibrate for Y >= Mild
 # it wouldn't let me set riskdist to "F" so I used the scat1d.opts - and set to 0 to supress the distribution of predictions in margin
 plot(cal1, scat1d.opts=list(nhistSpike=0, side=1, frac=0.00, tck=0), subtitles = F, xlab = "Predicted Probability", ylab = "Actual Probability")
@@ -371,6 +373,23 @@ auc.res <- cbind.data.frame(auc.df.names, auc.df)
 # y <- replace(y, y==2, 1)
 # cal.plot <- MyCalPlot(b.pred, y, smooth = T, logistic.cal = F, pl=T, riskdist = "predicted", statloc = F, 
 #                       legendloc=c(0.8,0.1), cex = 1)
+
+# c-index for levels of RS
+fitted.pred = as.data.frame(predict(r, type = 'fitted'))
+mild.pred = fitted.pred[,1]
+sev.pred = fitted.pred[,2]
+
+y.mild = as.numeric(abs.2$rs)
+y.mild = replace(y.mild, y.mild==1, 0) # make 0 normal
+y.mild = replace(y.mild, y.mild==2, 1) # make mild==1
+y.mild = replace(y.mild, y.mild==3, 1) # make severe==1
+cal.plot.mild.train = val.prob(mild.pred, y.mild) # c-index = 0.919
+
+y.severe = as.numeric(abs.2$rs)
+y.severe = replace(y.severe, y.severe==1, 0) # make 0 normal
+y.severe = replace(y.severe, y.severe==2, 0) # make mild==0
+y.severe = replace(y.severe, y.severe==3, 1) # make severe==1
+cal.plot.severe.train = val.prob(sev.pred, y.severe) # c-index = 0.958
 
 # predict class membership
 pred.ind = predict(r, type = "fitted.ind")
