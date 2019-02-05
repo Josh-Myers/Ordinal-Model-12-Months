@@ -496,8 +496,11 @@ eg.plot.1 = ggplot(eg.abs.long1) +
 eg.plot.1
 
 eg2 = filter(abs.2, sub.id==416, ear=="R") 
+eg.prob.2 = round(predict(r, eg2, type='fitted'), 2)
 eg.prob.ind2 = round(predict(r, eg2, type = "fitted.ind"), 2)
 eg.prob.ind2
+prob.ind.norm2 = eg.prob.ind2[1]
+prob.ind.mild2 = eg.prob.ind2[2]
 prob.ind.sev2 = eg.prob.ind2[3]
 eg.abs2 = filter(abs.24, sub.id==416, ear=="R") 
 eg.abs2 = dplyr::select(eg.abs2, abs226:abs8000)
@@ -519,7 +522,11 @@ eg.plot.2 = ggplot(eg.abs.long2) +
   theme(plot.title = element_text(lineheight=.8, face="bold")) +
   theme(plot.title = element_text(vjust=2)) +
   annotate("text", x = 250, y = c(0.90), label = ("Right ear of a 53-week-old male"), hjust = 0) +
-  annotate("text", x = 250, y = c(0.80), label = paste("Severe = ",  prob.ind.sev2), parse=F, hjust=0) 
+  annotate("text", x = 250, y = c(0.80), label = ("'ME' >= ~'mild'~ 0.98"), parse=TRUE, hjust=0) +
+  annotate("text", x = 250, y = c(0.70), label = ("'ME' >= ~'severe'~ 0.89"), parse=TRUE, hjust=0) +
+  annotate("text", x = 250, y = c(0.60), label = paste("Normal = ",  prob.ind.norm2), parse=F, hjust=0) +
+  annotate("text", x = 250, y = c(0.50), label = paste("Mild = ",  prob.ind.mild2), parse=F, hjust=0) +
+  annotate("text", x = 250, y = c(0.40), label = paste("Severe = ",  prob.ind.sev2), parse=F, hjust=0) 
 
 eg.plot.2
 
