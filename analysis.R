@@ -271,6 +271,10 @@ abs.2$ethnicity[abs.2$ethnicity == "Oceanian"] <- "Asian"
 abs.2$ethnicity[abs.2$ethnicity == "South American"] <- "Asian"
 abs.2$ethnicity = droplevels(abs.2$ethnicity)
 
+# impute missing age with median
+median_age = median(abs.2$age.wks, na.rm = TRUE)
+abs.2$age.wks[is.na(abs.2$age.wks)] = median_age
+
 raw.dd <- datadist(abs.2)
 options(datadist="raw.dd")
 f <- lrm(rs ~ abs1000 + abs1414 + abs2000 + abs2828 + abs4000 + abs5657, data = abs.2, x = T, y = T)
@@ -534,10 +538,10 @@ eg.plots <- plot_grid(eg.plot.1, eg.plot.2, nrow=2, ncol=1, align = "v", labels 
 ggsave("fig.4.eg.plots.jpeg", eg.plots, height=6, width=6, dpi=500)
 
 # Demographics model
-f.dem <- lrm(rs ~ ear + gender + ethnicity + abs1000 + abs1414 + abs2000 + abs2828 + abs4000 + abs5657, data = abs.2, x = T, y = T)
+f.dem <- lrm(rs ~ ear + gender + ethnicity + age.wks + abs1000 + abs1414 + abs2000 + abs2828 + abs4000 + abs5657, data = abs.2, x = T, y = T)
 r.dem = robcov(f.dem, abs.2$sub.id) 
 r.dem                  
-gamma.dem = (302.03 - 9) / 302.03
+gamma.dem = (303.03 - 10) / 303.03
 aic.dem = AIC(r.dem) # model without dems has lower AIC so use that one
 
 # nonlinear model
